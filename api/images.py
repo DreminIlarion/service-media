@@ -88,4 +88,3 @@ async def get_image(filename: str):
         raise HTTPException(status_code=500, detail=f"Ошибка S3: {error_code}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {str(e)}")
-    
