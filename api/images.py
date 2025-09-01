@@ -21,7 +21,8 @@ s3_client = boto3.client(
     region_name=AWS_REGION,
     endpoint_url=S3_ENDPOINT_URL
 )
-
+ 
+ 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_image(file: UploadFile = File(...)):
     """
