@@ -1,4 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from typing import List,Dict
+from fastapi import APIRouter, UploadFile, File, HTTPException 
 import boto3
 from botocore.exceptions import NoCredentialsError, ClientError
 import os
@@ -42,20 +43,49 @@ async def upload_image(file: UploadFile = File(...)):
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"Ошибка S3: {str(e)}")
 
+@router.get("/images", response_model=List[Dict[str, str]])
+async def get_all_image():
+    """
+    Возвращает все названия изображений с хранилища.
+    """
+    try:
+        # Сначала проверяем существование файла
+        response=s3_client.list_objects_v2(Bucket=S3_BUCKET)
+        filenames = []
+        if 'Contents' in response:
+            filenames = [{'filenames':item['Key']} for item in response['Contents']]
+        
+        return filenames
+ 
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'NoSuchBucket':
+            raise HTTPException(status_code=404, detail="Изображения не найдены")
+        raise HTTPException(status_code=500, detail=f"Ошибка S3: {error_code}")
+
 @router.get("/images/{filename}")
 async def get_image(filename: str):
     """
     Получает временную ссылку для доступа к изображению в S3.
     """
     try:
+        # Сначала проверяем существование файла
+        s3_client.head_object(Bucket=S3_BUCKET, Key=filename)
+        
+        # Если файл существует, генерируем ссылку
         url = s3_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": S3_BUCKET, "Key": filename},
             ExpiresIn=3600
         )
-
+        url = url.replace("http://minio:9000/", "http://localhost:9000/")
         return {"url": url}
+        
     except ClientError as e:
-        if ClientError.response['Error']['Code'] == '404':
+        error_code = e.response['Error']['Code']
+        if error_code == '404' or error_code == 'NoSuchKey':
             raise HTTPException(status_code=404, detail="Изображение не найдено")
-        raise HTTPException(status_code=500, detail=f"Ошибка S3: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка S3: {error_code}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {str(e)}")
+    

@@ -12,9 +12,10 @@ services:
       - AWS_SECRET_ACCESS_KEY=minioadmin
       - AWS_REGION=us-east-1
       - S3_BUCKET=my-image-bucket
-      - S3_ENDPOINT_URL=http://localhost:9000
+      - S3_ENDPOINT_URL=http://minio:9000
     depends_on:
       - minio
+      - create-bucket  # Ждем создания бакета
     volumes:
       - ./:/app
     networks:
@@ -38,6 +39,21 @@ services:
       interval: 30s
       timeout: 20s
       retries: 3
+
+  create-bucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin); do echo 'Waiting for MinIO...'; sleep 2; done;
+      /usr/bin/mc mb myminio/my-image-bucket;
+      /usr/bin/mc policy set public myminio/my-image-bucket || true;
+      echo 'Bucket my-image-bucket created successfully';
+      "
+    networks:
+      - app-network
 
 volumes:
   minio-data:
