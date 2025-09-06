@@ -1,6 +1,24 @@
-version: '3.8'
+version: '3.9'
 
 services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ${DB_NAME:-Test1}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   fastapi:
     build:
       context: .
@@ -8,16 +26,26 @@ services:
     ports:
       - "8080:8000"
     environment:
-      - AWS_ACCESS_KEY_ID=minioadmin
-      - AWS_SECRET_ACCESS_KEY=minioadmin
-      - AWS_REGION=us-east-1
-      - S3_BUCKET=my-image-bucket
-      - S3_ENDPOINT_URL=http://minio:9000
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-my-image-bucket}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+      DB_HOST: postgres
+      DB_NAME: ${DB_NAME:-Test1}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PORT: ${DB_PORT:-5432}
+      ENV: ${ENV:-development}
     depends_on:
-      - minio
-      - create-bucket  # Ждем создания бакета
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      create-bucket:
+        condition: service_completed_successfully
     volumes:
-      - ./:/app
+      - ./:/app  # Only for development
     networks:
       - app-network
 
@@ -27,8 +55,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     volumes:
       - minio-data:/data
     command: server /data --console-address ":9001"
@@ -36,8 +64,8 @@ services:
       - app-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
+      interval: 5s
+      timeout: 3s
       retries: 3
 
   create-bucket:
@@ -47,16 +75,17 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      until (/usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin); do echo 'Waiting for MinIO...'; sleep 2; done;
-      /usr/bin/mc mb myminio/my-image-bucket;
-      /usr/bin/mc policy set public myminio/my-image-bucket || true;
-      echo 'Bucket my-image-bucket created successfully';
+      until (/usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin}); do echo 'Ожидание MinIO...'; sleep 1; done;
+      /usr/bin/mc mb myminio/${S3_BUCKET:-my-image-bucket};
+      /usr/bin/mc policy set public myminio/${S3_BUCKET:-my-image-bucket} || true;
+      echo 'Бакет ${S3_BUCKET:-my-image-bucket} успешно создан';
       "
     networks:
       - app-network
 
 volumes:
   minio-data:
+  postgres-data:
 
 networks:
   app-network:

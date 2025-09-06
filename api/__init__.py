@@ -1,7 +1,3 @@
-from fastapi import APIRouter
+from .files import router as images_router
 
-from api.images import router as files_router
-
-router = APIRouter()
-
-router.include_router(files_router)
+__all__ = ['images_router']
